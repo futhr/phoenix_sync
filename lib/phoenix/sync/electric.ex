@@ -640,8 +640,14 @@ defmodule Phoenix.Sync.Electric do
   end
 end
 
-if Code.ensure_loaded?(Electric.Shapes.Api) &&
-     Code.ensure_loaded?(Phoenix.Sync.Electric.ApiAdapter) do
+# `Phoenix.Sync.Electric.ApiAdapter` is defined under this same
+# `Code.ensure_loaded?(Electric.Shapes.Api)` guard (in electric/api_adapter.ex) and is
+# only referenced from this impl's function bodies (runtime), so it need not be loaded
+# when this impl compiles. Guarding on it as well made the impl compile-order dependent:
+# `Code.ensure_loaded?/1` creates no compile dependency, and this module compiles before
+# api_adapter.ex, so the guard was false and the impl was silently dropped — leaving
+# `Electric.Shapes.Api` without a PlugApi impl and 500ing every shape request (#117).
+if Code.ensure_loaded?(Electric.Shapes.Api) do
   defimpl Phoenix.Sync.Adapter.PlugApi, for: Electric.Shapes.Api do
     alias Electric.Shapes
 
