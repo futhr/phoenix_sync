@@ -13,11 +13,11 @@ config :logger, :default_formatter,
 config :phoenix_sync, Phoenix.Sync.LiveViewTest.Endpoint, []
 
 db_config = [
-  username: "postgres",
-  password: "password",
-  hostname: "localhost",
-  database: "phoenix_sync",
-  port: 55555
+  username: System.get_env("PGUSER", "postgres"),
+  password: System.get_env("PGPASSWORD", "password"),
+  hostname: System.get_env("PGHOST", "localhost"),
+  database: System.get_env("PGDATABASE", "phoenix_sync"),
+  port: String.to_integer(System.get_env("PGPORT", "55555"))
 ]
 
 # configure the support repo with random options so we can validate them in Phoenix.Sync.ConfigTest
@@ -33,7 +33,12 @@ config :phoenix_sync,
 
 config :phoenix_sync,
        Support.ConfigTestRepo,
-       Keyword.delete(db_config, :port) ++
+       [
+         username: "postgres",
+         password: "password",
+         hostname: "localhost",
+         database: "phoenix_sync"
+       ] ++
          [
            stacktrace: true,
            show_sensitive_data_on_connection_error: true,

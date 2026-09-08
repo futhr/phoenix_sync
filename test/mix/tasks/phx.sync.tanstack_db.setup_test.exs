@@ -56,7 +56,7 @@ defmodule Mix.Tasks.Phx.Sync.TanstackDb.SetupTest do
 
     assert_has_patch(igniter, "mix.exs", """
     - |      {:esbuild, "~> 0.10", runtime: Mix.env() == :dev},
-    - |      {:tailwind, "~> 0.3", runtime: Mix.env() == :dev},
+    - |      {:tailwind, "~> 0.5", runtime: Mix.env() == :dev},
     """)
 
     assert_has_patch(igniter, "mix.exs", """

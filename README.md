@@ -20,6 +20,45 @@ Real-time sync for Postgres-backed [Phoenix](https://www.phoenixframework.org/) 
 
 Documentation is available at [hexdocs.pm/phoenix_sync](https://hexdocs.pm/phoenix_sync).
 
+## PostgreSQL 18 qualification
+
+This fork qualifies Electric 1.8.1 and electric_client 0.10.3 against PostgreSQL
+18.6. Hosts using embedded Electric must declare `{:electric, "~> 1.8.1",
+override: true}` alongside an immutable revision of this fork. HTTP-only hosts
+can omit Electric. Phoenix Assets does not choose the host's sync backend.
+
+The sandbox implements Electric 1.8's inspector invalidation and missing-table
+contract, supplies transaction timing/change-count metadata, and initializes
+stack state before shape processes start. Keep the sandbox enabled in test
+hosts: replacing it with the ordinary PostgreSQL adapter loses transaction
+isolation. CORS exposes the complete Electric 1.8 shape response headers.
+
+Local qualification uses `.tool-versions`, PostgreSQL 18.6 with
+`wal_level=logical`, and these gates:
+
+```sh
+mise exec -- mix deps.get
+mise exec -- mix format --check-formatted
+MIX_ENV=test mise exec -- mix compile --force --all-warnings --warnings-as-errors
+MIX_ENV=test mise exec -- mix hex.audit
+mise exec -- mix test --warnings-as-errors
+MIX_ENV=test mise exec -- mix test.as_a_dep
+MIX_ENV=test mise exec -- mix test.apps
+```
+
+Set `PGHOST`, `PGPORT`, `PGUSER` and `PGPASSWORD` for a local test server.
+The main suite also accepts `PGDATABASE` and `DATABASE_URL`; use dedicated test
+databases because example-app tests recreate their own databases. The pinned
+Compose service provides the defaults. PostgreSQL 18 volumes mount at
+`/var/lib/postgresql` and its cluster lives in `/var/lib/postgresql/18/docker`.
+
+Run qualification locally. Pull requests run one current-runtime suite; the
+separate consumer/example jobs are available only by explicit manual dispatch.
+No hosted workflow is required for local qualification.
+
+See [PostgreSQL 18.6 release notes](https://www.postgresql.org/docs/release/18.6/)
+and the [official container storage contract](https://github.com/docker-library/docs/blob/master/postgres/README.md#pgdata).
+
 ## Build real-time apps on sync
 
 Phoenix.Sync is a library that adds real-time sync to Postgres-backed [Phoenix](https://www.phoenixframework.org/) applications. Use it to sync data into both LiveView and front-end web and mobile applications.
@@ -248,7 +287,7 @@ Example config:
 # mix.exs
 defp deps do
   [
-    {:electric, "~> 1.0"},
+    {:electric, "~> 1.8.1", override: true},
     {:phoenix_sync, "~> 0.6"}
   ]
 end
@@ -303,7 +342,7 @@ It is also possible to include Electric as an application dependency and configu
 # mix.exs
 defp deps do
   [
-    {:electric, "~> 1.0"},
+    {:electric, "~> 1.8.1", override: true},
     {:phoenix_sync, "~> 0.6"}
   ]
 end
@@ -342,7 +381,7 @@ With Electric only included and compiled as a dependency in `:dev` and `:test`.
 # mix.exs
 defp deps do
   [
-    {:electric, "~> 1.0", only: [:dev, :test]},
+    {:electric, "~> 1.8.1", only: [:dev, :test], override: true},
     {:phoenix_sync, "~> 0.6"}
   ]
 end

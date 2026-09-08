@@ -6,11 +6,11 @@ import Config
 # to provide built-in test partitioning in CI environment.
 # Run `mix help test` for more information.
 config :phoenix_sync_example, PhoenixSyncExample.Repo,
-  username: "postgres",
-  password: "password",
-  hostname: "localhost",
+  username: System.get_env("PGUSER", "postgres"),
+  password: System.get_env("PGPASSWORD", "password"),
+  hostname: System.get_env("PGHOST", "localhost"),
   database: "phoenix_sync_example_test#{System.get_env("MIX_TEST_PARTITION")}",
-  port: 55555,
+  port: String.to_integer(System.get_env("PGPORT", "55555")),
   pool: Ecto.Adapters.SQL.Sandbox,
   pool_size: System.schedulers_online() * 2
 

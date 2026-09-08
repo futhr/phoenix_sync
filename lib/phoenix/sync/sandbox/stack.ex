@@ -178,8 +178,11 @@ if Phoenix.Sync.sandbox_enabled?() do
           Electric.ShapeCache.ShapeStatus.ShapeDb.Supervisor,
           shape_db_opts: [storage_dir: ":memory:", exclusive_mode: true], stack_id: stack_id
         },
-        {Electric.ShapeCache.ShapeStatusOwner, stack_id: stack_id},
         {Electric.StatusMonitor, stack_id: stack_id},
+        {Electric.ShapeCache.ShapeStatusOwner, stack_id: stack_id},
+        # ShapeCache may mark its collector ready as soon as it starts. Publish
+        # the initial LSN synchronously before any shape processes can observe it.
+        {Sandbox.InitializeStack, stack_id: stack_id},
         {Electric.ShapeCache.ShapeCleaner.CleanupTaskSupervisor, stack_id: stack_id},
         {Sandbox.Inspector, stack_id: stack_id, repo: repo, owner: owner},
         {DynamicSupervisor,
@@ -202,8 +205,7 @@ if Phoenix.Sync.sandbox_enabled?() do
           },
           restart: :temporary
         ),
-        {Sandbox.Producer, stack_id: stack_id},
-        {Sandbox.InitializeStack, stack_id: stack_id}
+        {Sandbox.Producer, stack_id: stack_id}
       ]
 
       Supervisor.init(children, strategy: :one_for_one)

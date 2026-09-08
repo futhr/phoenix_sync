@@ -17,6 +17,7 @@ defmodule Phoenix.Sync.Plug.CORS do
     "electric-offset",
     "electric-schema",
     "electric-up-to-date",
+    "electric-snapshot",
     "electric-internal-known-error",
     "retry-after"
   ]

@@ -106,7 +106,7 @@ defmodule Phoenix.Sync.ApplicationTest do
     end
 
     test "embedded mode dev env" do
-      tmp_dir = System.tmp_dir!()
+      tmp_dir = Path.expand(System.tmp_dir!())
 
       config = [
         mode: :embedded,
@@ -119,13 +119,13 @@ defmodule Phoenix.Sync.ApplicationTest do
       validate_repo_connection_opts!(opts)
 
       assert %{
-               storage:
-                 {Electric.ShapeCache.PureFileStorage,
-                  [storage_dir: ^tmp_dir <> "/" <> storage_dir]},
+               storage: {Electric.ShapeCache.PureFileStorage, [storage_dir: storage_dir]},
                persistent_kv: %Electric.PersistentKV.Filesystem{
-                 root: ^tmp_dir <> "/" <> storage_dir
+                 root: storage_dir
                }
              } = Map.new(opts)
+
+      assert Path.dirname(storage_dir) == tmp_dir
     end
 
     test "passes repo pg port to electric" do

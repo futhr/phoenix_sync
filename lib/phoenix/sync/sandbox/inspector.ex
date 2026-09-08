@@ -29,7 +29,17 @@ if Phoenix.Sync.sandbox_enabled?() do
     end
 
     @impl Electric.Postgres.Inspector
-    def clean(_, _), do: true
+    # Sandbox catalogs are small. Invalidating all entries also clears cached
+    # parent/child metadata when a relation is changed, renamed or recreated.
+    def clean(_relation_id, stack_id), do: reset(stack_id)
+
+    @impl Electric.Postgres.Inspector
+    def reset(stack_id) do
+      case GenServer.whereis(name(stack_id)) do
+        nil -> :ok
+        pid -> GenServer.call(pid, :reset)
+      end
+    end
 
     @impl Electric.Postgres.Inspector
     def list_relations_with_stale_cache(_), do: {:ok, []}
@@ -116,6 +126,10 @@ if Phoenix.Sync.sandbox_enabled?() do
       {:reply, result, state}
     end
 
+    def handle_call(:reset, _from, state) do
+      {:reply, :ok, %{state | relations: %{}, columns: %{}, oids: %{}, supported_features: %{}}}
+    end
+
     defp pool(state) do
       %{pid: pool} = Ecto.Adapter.lookup_meta(state.repo.get_dynamic_repo())
       pool
@@ -130,6 +144,9 @@ if Phoenix.Sync.sandbox_enabled?() do
           case handling_exits(fun, state) do
             {:ok, value} ->
               {{:ok, value}, Map.update!(state, cache, &Map.put(&1, key, value))}
+
+            :table_not_found ->
+              {:table_not_found, state}
 
             {:error, _reason} = error ->
               {error, state}

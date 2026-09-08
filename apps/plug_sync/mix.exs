@@ -7,6 +7,7 @@ defmodule PlugSync.MixProject do
       version: "0.1.0",
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
+      aliases: [test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"]],
       deps: deps()
     ]
   end
@@ -26,7 +27,7 @@ defmodule PlugSync.MixProject do
       {:bandit, "~> 1.0"},
       {:postgrex, "~> 0.21"},
       {:ecto_sql, "~> 3.0"},
-      {:electric, "~> 1.0"},
+      {:electric, "~> 1.8.1", override: true},
       {:phoenix_sync, [path: "../..", override: true]},
       {:igniter, "~> 0.6"}
     ]

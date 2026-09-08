@@ -3,7 +3,7 @@ defmodule Phoenix.Sync.MixProject do
 
   # Remember to update the README when you change the version
   @version "0.6.1"
-  @electric_version "~> 1.6.0"
+  @electric_version "~> 1.8.1"
 
   def project do
     [
@@ -45,8 +45,8 @@ defmodule Phoenix.Sync.MixProject do
       {:plug, "~> 1.0"},
       {:jason, "~> 1.0"},
       {:ecto_sql, "~> 3.10", optional: true},
-      {:electric, @electric_version, optional: true},
-      {:electric_client, ">= 0.10.1-beta-1"},
+      {:electric, @electric_version, optional: true, override: true},
+      {:electric_client, "~> 0.10.3"},
       {:igniter, "~> 0.6", optional: true}
     ] ++ deps_for_env(Mix.env()) ++ json_deps()
   end
@@ -57,6 +57,7 @@ defmodule Phoenix.Sync.MixProject do
       {:floki, "~> 0.36", only: [:test]},
       {:lazy_html, ">= 0.1.0", only: :test},
       {:mox, "~> 1.1", only: [:test]},
+      {:phx_new, "~> 1.7", only: :test, runtime: false},
       {:uuid, "~> 1.1", only: [:test]}
     ]
   end
@@ -133,7 +134,7 @@ defmodule Phoenix.Sync.MixProject do
   defp elixirc_paths(_), do: ["lib"]
 
   defp test_as_a_dep_embedded(args) do
-    do_test_as_a_dep("tmp/as_a_dep_embedded", [{:electric, "~> 1.0"}], args)
+    do_test_as_a_dep("tmp/as_a_dep_embedded", [{:electric, "~> 1.8.1", override: true}], args)
   end
 
   defp test_as_a_dep_standalone(args) do
@@ -154,7 +155,8 @@ defmodule Phoenix.Sync.MixProject do
 
       mix_cmd_with_status_check([
         "do",
-        "deps.get,",
+        "deps.get",
+        "+",
         "compile",
         "--force",
         "--warnings-as-errors" | args

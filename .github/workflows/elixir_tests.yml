@@ -1,19 +1,21 @@
 name: Elixir CI
 
 on:
-  push:
-    branches: ["main"]
-    paths-ignore:
-      - "**/README.md"
+  workflow_dispatch:
   pull_request:
     paths-ignore:
       - "**/README.md"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
   test:
+    timeout-minutes: 20
     name: mix test
     runs-on: ubuntu-latest
     env:
@@ -21,7 +23,7 @@ jobs:
 
     services:
       postgres:
-        image: "postgres:17-alpine"
+        image: "postgres:18.6-alpine3.24@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2"
         env:
           POSTGRES_PASSWORD: password
           POSTGRES_DB: phoenix_sync
@@ -42,7 +44,7 @@ jobs:
 
       - name: "Set PG settings"
         run: |
-          docker exec ${{ job.services.postgres.id }} sh -c 'echo "wal_level=logical" >> /var/lib/postgresql/data/postgresql.conf'
+          docker exec ${{ job.services.postgres.id }} sh -c 'echo "wal_level=logical" >> /var/lib/postgresql/18/docker/postgresql.conf'
           docker restart ${{ job.services.postgres.id }}
 
       - uses: erlef/setup-beam@v1
@@ -72,12 +74,10 @@ jobs:
             ${{ runner.os }}-build-${{ env.MIX_ENV }}-
             ${{ runner.os }}-build-
 
-      # needed for the igniter tests
-      - name: Install phx.new task
-        run: mix archive.install hex phx_new --force
-
       - name: Install dependencies
         run: mix deps.get && mix deps.compile
+
+      - run: mix format --check-formatted
 
       - name: Compiles without warnings
         run: mix compile --force --all-warnings --warnings-as-errors
@@ -86,6 +86,7 @@ jobs:
         run: mix test --trace
 
   test-as-dep-standalone:
+    if: github.event_name == 'workflow_dispatch'
     name: Test installation as a dependency without Electric or Ecto
     runs-on: ubuntu-latest
     env:
@@ -105,6 +106,7 @@ jobs:
         run: mix test.as_a_dep.standalone
 
   test-as-dep-embedded:
+    if: github.event_name == 'workflow_dispatch'
     name: Test installation as a dependency with embedded Electric
     runs-on: ubuntu-latest
     env:
@@ -124,13 +126,14 @@ jobs:
         run: mix test.as_a_dep.embedded
 
   test-apps:
+    if: github.event_name == 'workflow_dispatch'
     name: Test integration apps
     runs-on: ubuntu-latest
     env:
       MIX_ENV: test
     services:
       postgres:
-        image: "postgres:17-alpine"
+        image: "postgres:18.6-alpine3.24@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2"
         env:
           POSTGRES_PASSWORD: password
           POSTGRES_DB: phoenix_sync
@@ -156,6 +159,7 @@ jobs:
         run: mix test.apps
 
   formatting:
+    if: github.event_name == 'workflow_dispatch'
     name: mix format --check-formatted
     runs-on: ubuntu-latest
     env:

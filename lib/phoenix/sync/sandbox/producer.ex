@@ -82,13 +82,22 @@ if Phoenix.Sync.sandbox_enabled?() do
 
     defp transaction(txid, changes) do
       %{log_offset: last_log_offset} = Enum.at(changes, -1)
+      timestamp = System.monotonic_time()
+      change_count = length(changes)
 
       %TransactionFragment{
         xid: txid,
         lsn: Electric.Postgres.Lsn.from_integer(txid),
         last_log_offset: last_log_offset,
         has_begin?: true,
-        commit: %Commit{},
+        commit: %Commit{
+          commit_timestamp: DateTime.utc_now(),
+          received_at: timestamp,
+          tx_started_at: timestamp,
+          initial_receive_lag: 0,
+          txn_change_count: change_count
+        },
+        change_count: change_count,
         changes: changes,
         affected_relations: MapSet.new(changes, & &1.relation)
       }
