@@ -19,6 +19,11 @@ defmodule Phoenix.Sync.Electric.ClientAdapterTest do
     end
   end
 
+  defmodule TransportErrorFetch do
+    def validate_opts(opts), do: {:ok, opts}
+    def fetch(_request, _opts), do: {:error, :pool_not_available}
+  end
+
   test "forwards request headers to sync server" do
     {:ok, client} =
       Electric.Client.new(
@@ -42,5 +47,27 @@ defmodule Phoenix.Sync.Electric.ClientAdapterTest do
              {"my-header-1", "my-header-1-value-2"},
              {"my-header-2", "my-header-2-value"}
            ]
+  end
+
+  test "returns a safe gateway error when Electric transport is unavailable" do
+    {:ok, client} =
+      Electric.Client.new(
+        base_url: "elixir://#{inspect(__MODULE__.Fetch)}",
+        fetch: {TransportErrorFetch, []}
+      )
+
+    adapter = %ClientAdapter{client: client}
+    conn = conn(:get, "/v1/shapes", %{})
+
+    response = Phoenix.Sync.Adapter.PlugApi.call(adapter, conn, %{offset: -1})
+
+    assert response.status == 502
+
+    assert Plug.Conn.get_resp_header(response, "content-type") == [
+             "application/json; charset=utf-8"
+           ]
+
+    assert Jason.decode!(response.resp_body) == %{"error" => "electric_upstream_unavailable"}
+    refute response.resp_body =~ "pool_not_available"
   end
 end

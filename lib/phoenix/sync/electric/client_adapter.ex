@@ -81,6 +81,7 @@ defmodule Phoenix.Sync.Electric.ClientAdapter do
         case Client.Fetch.request(sync_client.client, request) do
           %Client.Fetch.Response{} = response -> response
           {:error, %Client.Fetch.Response{} = response} -> response
+          {:error, _reason} -> upstream_unavailable_response()
         end
 
       body =
@@ -94,6 +95,14 @@ defmodule Phoenix.Sync.Electric.ClientAdapter do
         end
 
       %{response | body: body}
+    end
+
+    defp upstream_unavailable_response do
+      %Client.Fetch.Response{
+        status: 502,
+        headers: %{"content-type" => ["application/json; charset=utf-8"]},
+        body: Jason.encode!(%{error: "electric_upstream_unavailable"})
+      }
     end
 
     defp put_req_headers(request, headers) do
