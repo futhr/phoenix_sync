@@ -3,6 +3,11 @@ defmodule Phoenix.Sync.Electric.ClientAdapter do
 
   defstruct [:client, :shape_definition]
 
+  @type t :: %__MODULE__{
+          client: Electric.Client.t(),
+          shape_definition: Phoenix.Sync.PredefinedShape.t() | nil
+        }
+
   defimpl Phoenix.Sync.Adapter.PlugApi do
     alias Electric.Client
 

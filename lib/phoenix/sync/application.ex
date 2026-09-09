@@ -69,7 +69,7 @@ defmodule Phoenix.Sync.Application do
     }
   end
 
-  @spec plug_opts() :: keyword()
+  @spec plug_opts() :: Phoenix.Sync.Adapter.plug_opts()
   def plug_opts do
     config() |> plug_opts()
   end
