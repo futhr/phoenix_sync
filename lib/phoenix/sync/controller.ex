@@ -126,6 +126,17 @@ defmodule Phoenix.Sync.Controller do
   client's shape can be picked up immediately without waiting for the long-poll
   timeout to expire.
 
+  The callback also runs immediately before response headers are sent, for
+  snapshots and ordinary long-poll completion. If its Electric definition
+  changes, the prepared body is discarded and the request is
+  retried with the current definition. Electric handles an old shape handle
+  through its normal refetch response. Callbacks must be free of side effects
+  and read current authorization inside the function; returning a query captured
+  earlier cannot detect a changed grant. This check does not stop a response
+  whose headers have already been sent. Row transforms are transport mappings,
+  not part of Electric's shape identity; authorization belongs in the shape's
+  predicates and selected columns.
+
   For instance, when creating a task manager apps your clients will have a list
   of tasks and each task will have a set of steps.
 
@@ -205,7 +216,7 @@ defmodule Phoenix.Sync.Controller do
       |> interruptible_call(api, params, shape_fun)
     else
       predefined_shape = call_shape_fun(shape_fun)
-      sync_render_call(conn, api, params, predefined_shape)
+      sync_render_call(conn, api, params, predefined_shape, shape_fun)
     end
   end
 
@@ -234,62 +245,98 @@ defmodule Phoenix.Sync.Controller do
     api
   end
 
-  defp sync_render_call(conn, api, params, predefined_shape) do
-    Phoenix.Sync.Electric.api_predefined_shape(conn, api, predefined_shape, fn conn, shape_api ->
+  defp sync_render_call(conn, api, params, predefined_shape, shape_fun \\ nil) do
+    response_conn = validate_before_send(conn, predefined_shape, shape_fun)
+
+    Phoenix.Sync.Electric.api_predefined_shape(response_conn, api, predefined_shape, fn conn,
+                                                                                        shape_api ->
       Phoenix.Sync.Adapter.PlugApi.call(shape_api, CORS.call(conn), params)
     end)
+  catch
+    {:phoenix_sync_shape_changed, current_shape} ->
+      sync_render_call(conn, api, params, current_shape, shape_fun)
   end
 
   defp interruptible_call(conn, api, params, shape_fun) do
     predefined_shape = call_shape_fun(shape_fun)
 
-    Phoenix.Sync.Electric.api_predefined_shape(conn, api, predefined_shape, fn conn, shape_api ->
-      {:ok, key} = ShapeRequestRegistry.register_shape(predefined_shape)
+    result =
+      Phoenix.Sync.Electric.api_predefined_shape(conn, api, predefined_shape, fn conn,
+                                                                                 shape_api ->
+        {:ok, key} = ShapeRequestRegistry.register_shape(predefined_shape)
 
-      try do
-        parent = self()
-        start_time = now()
+        try do
+          parent = self()
+          start_time = now()
 
-        {:ok, pid} =
-          Task.start_link(fn ->
-            send(parent, {:response, self(), Adapter.PlugApi.response(shape_api, conn, params)})
-          end)
+          {:ok, pid} =
+            Task.start_link(fn ->
+              send(parent, {:response, self(), Adapter.PlugApi.response(shape_api, conn, params)})
+            end)
 
-        ref = Process.monitor(pid)
+          ref = Process.monitor(pid)
 
-        receive do
-          {:interrupt_shape, ^key, :server_interrupt} ->
-            Process.demonitor(ref, [:flush])
-            Process.unlink(pid)
-            Process.exit(pid, :kill)
-            # immediately retry the same request -- if the shape_fun returns a
-            # different shape the client will receive a must-refetch response but
-            # if the shape is the same then the request will continue with no
-            # interruption.
-            #
-            # if possible adjust the long poll timeout to account for the time
-            # already spent before the interrupt.
+          receive do
+            {:interrupt_shape, ^key, :server_interrupt} ->
+              Process.demonitor(ref, [:flush])
+              Process.unlink(pid)
+              Process.exit(pid, :kill)
+              {:retry, reduce_long_poll_timeout(api, start_time)}
 
-            api = reduce_long_poll_timeout(api, start_time)
+            {:response, ^pid, response} ->
+              Process.demonitor(ref, [:flush])
 
-            interruptible_call(conn, api, params, shape_fun)
+              response_conn = validate_before_send(conn, predefined_shape, shape_fun)
 
-          {:response, ^pid, response} ->
-            Process.demonitor(ref, [:flush])
+              try do
+                Adapter.PlugApi.send_response(shape_api, response_conn, response)
+              catch
+                {:phoenix_sync_shape_changed, _current_shape} ->
+                  {:retry, reduce_long_poll_timeout(api, start_time)}
+              end
 
-            Adapter.PlugApi.send_response(shape_api, conn, response)
-
-          {:DOWN, ^ref, :process, _pid, reason} ->
-            Plug.Conn.send_resp(conn, 500, inspect(reason))
+            {:DOWN, ^ref, :process, _pid, reason} ->
+              Plug.Conn.send_resp(conn, 500, inspect(reason))
+          end
+        after
+          ShapeRequestRegistry.unregister_shape(key)
         end
-      after
-        ShapeRequestRegistry.unregister_shape(key)
-      end
-    end)
+      end)
+
+    case result do
+      {:retry, api} -> interruptible_call(conn, api, params, shape_fun)
+      conn -> conn
+    end
   end
 
   defp interruptible_call?(params) do
     params["live"] == "true"
+  end
+
+  defp validate_before_send(conn, _shape, nil), do: conn
+
+  defp validate_before_send(conn, shape, shape_fun) do
+    definition = response_definition(shape)
+
+    Plug.Conn.register_before_send(conn, fn response ->
+      try do
+        current_shape = call_shape_fun(shape_fun)
+
+        if response_definition(current_shape) == definition do
+          response
+        else
+          throw({:phoenix_sync_shape_changed, current_shape})
+        end
+      catch
+        kind, reason ->
+          Phoenix.Sync.Electric.discard_response_stream(response)
+          :erlang.raise(kind, reason, __STACKTRACE__)
+      end
+    end)
+  end
+
+  defp response_definition(shape) do
+    Map.new(PredefinedShape.to_api_params(shape))
   end
 
   defp now, do: System.monotonic_time(:millisecond)

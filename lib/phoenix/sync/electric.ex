@@ -593,6 +593,19 @@ defmodule Phoenix.Sync.Electric do
   @json Phoenix.Sync.json_library()
 
   @doc false
+  def discard_response_stream(%{
+        assigns: %{
+          response: %{__struct__: Electric.Shapes.Api.Response, chunked: true, body: body}
+        }
+      }) do
+    # Start and halt the stream in its owner so Electric runs its reader cleanup.
+    # Only the first encoded chunk is visited; snapshots remain streamed.
+    Enum.reduce_while(body, :ok, fn _chunk, :ok -> {:halt, :ok} end)
+  end
+
+  def discard_response_stream(_conn), do: :ok
+
+  @doc false
   def map_response_body(body, nil) do
     body
   end
