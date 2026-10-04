@@ -167,8 +167,10 @@ if Phoenix.Sync.sandbox_enabled?() do
       # work normally done by postgrex
       {:ok, value} = Ecto.Type.dump(type, value)
 
-      {to_string(field), dump(value, type)}
+      {to_string(field), dump(value, Ecto.Type.type(type))}
     end
+
+    defp dump(<<_::128>> = uuid, :uuid), do: Ecto.UUID.load!(uuid)
 
     defp dump(%Decimal{} = decimal, _type) do
       Decimal.to_string(decimal)
@@ -254,6 +256,10 @@ if Phoenix.Sync.sandbox_enabled?() do
 
     defp encode_value(nil, _type) do
       "NULL"
+    end
+
+    defp encode_value(<<_::128>> = uuid, {:array, :uuid}) do
+      uuid |> dump(:uuid) |> encode_value(:string)
     end
 
     defp encode_value(value, _type) when is_binary(value) do
