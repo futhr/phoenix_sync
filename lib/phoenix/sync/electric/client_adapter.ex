@@ -13,6 +13,8 @@ defmodule Phoenix.Sync.Electric.ClientAdapter do
 
     alias Phoenix.Sync.PredefinedShape
 
+    @json Phoenix.Sync.json_library()
+
     def predefined_shape(sync_client, %PredefinedShape{} = predefined_shape) do
       shape_client = PredefinedShape.client(sync_client.client, predefined_shape)
 
@@ -99,8 +101,13 @@ defmodule Phoenix.Sync.Electric.ClientAdapter do
           response.body
         end
 
-      %{response | body: body}
+      %{response | body: encode_body(body)}
     end
+
+    defp encode_body(body) when is_map(body), do: @json.encode_to_iodata!(body)
+    defp encode_body([message | _] = body) when is_map(message), do: @json.encode_to_iodata!(body)
+    defp encode_body([]), do: @json.encode_to_iodata!([])
+    defp encode_body(body), do: body
 
     defp upstream_unavailable_response do
       %Client.Fetch.Response{
@@ -124,6 +131,7 @@ defmodule Phoenix.Sync.Electric.ClientAdapter do
       resp_headers =
         headers
         |> Map.delete("transfer-encoding")
+        |> Map.delete("content-length")
         |> expand_headers()
 
       Plug.Conn.merge_resp_headers(conn, resp_headers)
