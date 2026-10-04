@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Ignore empty sandbox write batches without restarting the producer or resetting
+  its transaction counter. Zero-row updates, deletes and ignored insert conflicts
+  no longer prevent later changes from reaching existing shapes.
+
 ## [0.6.1] - 2025-10-13
 
 ### Fixed
