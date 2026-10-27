@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Preserve PostgreSQL JSON/JSONB text and map-array values in sandbox update
+  events, including exact decimal evidence and JSON/SQL null distinctions.
+  Schema updates retain ordinary Ecto return values and field-source names.
+
 - Ignore empty sandbox write batches without restarting the producer or resetting
   its transaction counter. Zero-row updates, deletes and ignored insert conflicts
   no longer prevent later changes from reaching existing shapes.

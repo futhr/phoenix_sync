@@ -152,6 +152,11 @@ if Phoenix.Sync.sandbox_enabled?() do
       Map.new(values, &load_value(&1, schema))
     end
 
+    defp load_value({field, {:postgres_json_text, value}}, schema)
+         when is_binary(value) or is_nil(value) do
+      {to_string(schema.__schema__(:field_source, field)), value}
+    end
+
     defp load_value({field, raw_value}, schema) do
       type = schema.__schema__(:type, field)
 

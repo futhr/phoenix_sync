@@ -79,8 +79,8 @@ if Phoenix.Sync.sandbox_enabled?() do
             where -> [where | [" AND ", on]]
           end
 
-        return_old = Enum.map_intersperse(column_names, ", ", &["old.", &1])
-        return_new = Enum.map_intersperse(column_names, ", ", &[source_alias, ".", &1])
+        return_old = wire_columns(schema, field_names, "old")
+        return_new = wire_columns(schema, field_names, source_alias)
 
         {returning, original_count} =
           case returning do
@@ -185,6 +185,8 @@ if Phoenix.Sync.sandbox_enabled?() do
                 {{:old, col}, value}, {new_acc, old_acc} -> {new_acc, [{col, value} | old_acc]}
               end)
 
+            old_row = wire_values(meta.schema_meta.schema, old_row)
+            new_row = wire_values(meta.schema_meta.schema, new_row)
             {[return_cols | return], [{:update, meta.schema_meta, old_row, new_row} | emit]}
           end)
 
@@ -332,10 +334,6 @@ if Phoenix.Sync.sandbox_enabled?() do
       end
     end
 
-    defp quote_names(names) do
-      Enum.map_intersperse(names, ?,, &quote_name/1)
-    end
-
     defp quote_name(nil, name), do: quote_name(name)
 
     defp quote_name(prefix, name), do: [quote_name(prefix), ?., quote_name(name)]
@@ -372,12 +370,6 @@ if Phoenix.Sync.sandbox_enabled?() do
       intersperse_reduce(rest, separator, user_acc, reducer, [acc, elem, separator])
     end
 
-    defp returning([]),
-      do: []
-
-    defp returning(returning),
-      do: [" RETURNING " | quote_names(returning)]
-
     @impl true
     def update(adapter_meta, schema_meta, fields, params, returning, opts) do
       if stack_id = Phoenix.Sync.Sandbox.stack_id() do
@@ -398,8 +390,29 @@ if Phoenix.Sync.sandbox_enabled?() do
         {filters_old, _count} = update_filters(params, count, &quote_name/1)
 
         all_columns = schema_meta.schema.__schema__(:fields)
-        cols = Enum.map_intersperse(all_columns, ?,, &quote_name/1)
-        return_all = Enum.map(all_columns, &{:old, &1}) ++ Enum.map(all_columns, &{:new, &1})
+        schema = schema_meta.schema
+
+        cols =
+          Enum.map_intersperse(all_columns, ?,, &quote_name(schema.__schema__(:field_source, &1)))
+
+        return_all =
+          Enum.map(returning, &{:returned, &1}) ++
+            Enum.map(all_columns, &{:old, &1}) ++ Enum.map(all_columns, &{:new, &1})
+
+        # Caller return values retain the adapter's normal types. Capture-only
+        # JSON values use PostgreSQL text, matching logical replication without
+        # decoding decimal evidence through a floating-point JSON representation.
+        returned_columns = Enum.map(returning, &quote_name("new", &1))
+
+        captured_columns = [
+          wire_columns(schema, all_columns, "old"),
+          wire_columns(schema, all_columns, "new")
+        ]
+
+        returning_sql = [
+          " RETURNING ",
+          Enum.intersperse(returned_columns ++ captured_columns, ", ")
+        ]
 
         # https://stackoverflow.com/a/7927957
         # return the old and new values from an update by acquiring an exclusive lock
@@ -423,7 +436,7 @@ if Phoenix.Sync.sandbox_enabled?() do
           filters_old,
           " FOR UPDATE) old",
           " WHERE ",
-          filters_new | returning(return_all)
+          filters_new | returning_sql
         ]
 
         with {:ok, updated} <-
@@ -439,22 +452,46 @@ if Phoenix.Sync.sandbox_enabled?() do
                  return_all,
                  opts
                ) do
-          {new, old} =
-            Enum.reduce(updated, {[], []}, fn
-              {{:new, k}, v}, {new, old} -> {[{k, v} | new], old}
-              {{:old, k}, v}, {new, old} -> {new, [{k, v} | old]}
+          {returned, new, old} =
+            Enum.reduce(updated, {[], [], []}, fn
+              {{:returned, k}, v}, {returned, new, old} -> {[{k, v} | returned], new, old}
+              {{:new, k}, v}, {returned, new, old} -> {returned, [{k, v} | new], old}
+              {{:old, k}, v}, {returned, new, old} -> {returned, new, [{k, v} | old]}
             end)
 
           Phoenix.Sync.Sandbox.Producer.emit_changes(stack_id, [
-            {:update, schema_meta, old, new}
+            {:update, schema_meta, wire_values(schema, old), wire_values(schema, new)}
           ])
 
-          {:ok, take(new, returning)}
+          {:ok, take(returned, returning)}
         end
       else
         @adapter.update(adapter_meta, schema_meta, fields, params, returning, opts)
       end
     end
+
+    defp wire_columns(schema, fields, prefix) do
+      Enum.map_intersperse(fields, ", ", fn field ->
+        column = quote_name(prefix, schema.__schema__(:field_source, field))
+
+        if json_type?(Ecto.Type.type(schema.__schema__(:type, field))),
+          do: [column, "::text"],
+          else: column
+      end)
+    end
+
+    defp wire_values(schema, values) do
+      Enum.map(values, fn {field, value} ->
+        if json_type?(Ecto.Type.type(schema.__schema__(:type, field))),
+          do: {field, {:postgres_json_text, value}},
+          else: {field, value}
+      end)
+    end
+
+    defp json_type?(type) when type in [:map, :json, :jsonb], do: true
+    defp json_type?({:map, _}), do: true
+    defp json_type?({:array, type}), do: json_type?(type)
+    defp json_type?(_), do: false
 
     defp update_filters(params, count, quote_fun) do
       intersperse_reduce(params, " AND ", count, fn
