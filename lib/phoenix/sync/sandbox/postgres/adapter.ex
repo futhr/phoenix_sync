@@ -100,7 +100,11 @@ if Phoenix.Sync.sandbox_enabled?() do
           stack_id: stack_id
         }
 
-        {:nocache, {{:update_all_sync, meta}, [cte, prefix, fields, join, where, returning]}}
+        # Native SQL consumers (including Ash upserts) compose this statement.
+        # Capture-only columns belong to execution, not the public SQL rendering.
+        instrumented_sql = IO.iodata_to_binary([cte, prefix, fields, join, where, returning])
+        {:cache, {_id, sql}} = @adapter.prepare(:update_all, query)
+        {:nocache, {{:update_all_sync, Map.put(meta, :sql, instrumented_sql)}, sql}}
       else
         # disable caching for update_all queries. otherwise any matching query with
         # the sandbox disabled will override the sandboxed version
@@ -139,9 +143,11 @@ if Phoenix.Sync.sandbox_enabled?() do
           stack_id: stack_id
         }
 
-        {:nocache,
-         {{:delete_all_sync, meta},
-          [cte, prefix, from, as, source_alias, join, where | returning]}}
+        instrumented_sql =
+          IO.iodata_to_binary([cte, prefix, from, as, source_alias, join, where | returning])
+
+        {:cache, {_id, sql}} = @adapter.prepare(:delete_all, query)
+        {:nocache, {{:delete_all_sync, Map.put(meta, :sql, instrumented_sql)}, sql}}
       else
         # disable query caching for same reasons as update_all
         with {:cache, prepared} <- @adapter.prepare(:delete_all, query) do
@@ -162,6 +168,8 @@ if Phoenix.Sync.sandbox_enabled?() do
           params,
           opts
         ) do
+      query = put_elem(query, 1, {{:update_all_sync, meta}, meta.sql})
+
       with {n, rows} <- @adapter.execute(adapter_meta, query_meta, query, params, opts) do
         {keep_count, columns} = meta.returning
 
@@ -193,6 +201,8 @@ if Phoenix.Sync.sandbox_enabled?() do
           params,
           opts
         ) do
+      query = put_elem(query, 1, {{:delete_all_sync, meta}, meta.sql})
+
       with {n, rows} <- @adapter.execute(adapter_meta, query_meta, query, params, opts) do
         {keep_count, columns} = meta.returning
 

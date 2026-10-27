@@ -31,6 +31,24 @@ defmodule Phoenix.Sync.Sandbox.ProducerTest do
 
   setup [:with_repo_table]
 
+  test "mutation SQL remains a binary for native SQL consumers" do
+    import Ecto.Query
+
+    Repo.insert!(%Record{id: 1, label: "Initial"})
+    update = from(row in Record, where: row.id == 1, update: [set: [label: "Updated"]])
+    {update_sql, update_params} = Repo.to_sql(:update_all, update)
+    assert is_binary(update_sql)
+    assert %{num_rows: 1} = Repo.query!(update_sql, update_params)
+    assert Repo.get!(Record, 1).label == "Updated"
+
+    {delete_sql, delete_params} =
+      Repo.to_sql(:delete_all, from(row in Record, where: row.id == 1))
+
+    assert is_binary(delete_sql)
+    assert %{num_rows: 1} = Repo.query!(delete_sql, delete_params)
+    assert Repo.get(Record, 1) == nil
+  end
+
   test "zero-row writes preserve the producer and subsequent native delivery" do
     import Ecto.Query
 
