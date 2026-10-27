@@ -528,7 +528,9 @@ defmodule Phoenix.Sync.Electric do
   defp http_mode_plug_opts(electric_config) do
     with {:ok, client} <- configure_client(electric_config, :http) do
       # don't decode the body - just pass it directly
-      client = %{client | fetch: {Electric.Client.Fetch.HTTP, [request: [raw: true]]}}
+      {http, fetch_opts} = client.fetch
+      request_opts = fetch_opts |> Keyword.get(:request, []) |> Keyword.put(:raw, true)
+      client = %{client | fetch: {http, Keyword.put(fetch_opts, :request, request_opts)}}
       {:ok, %Phoenix.Sync.Electric.ClientAdapter{client: client}}
     end
   end
@@ -568,7 +570,8 @@ defmodule Phoenix.Sync.Electric do
          params = Map.merge(extra_params, credential_params) do
       Electric.Client.new(
         base_url: url,
-        params: params
+        params: params,
+        fetch: {Electric.Client.Fetch.HTTP, headers: Keyword.get(electric_config, :headers, [])}
       )
     end
   end

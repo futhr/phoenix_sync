@@ -336,6 +336,12 @@ children = [
 
 ### Local HTTP services
 
+For a service front door that authenticates request headers, configure
+`headers: [{"authorization", "Bearer ..."}]` instead of query credentials.
+The headers apply to both direct clients and the raw HTTP proxy. The service
+front door must support that authentication contract; this option does not
+change the native Electric API's query-secret authentication protocol.
+
 It is also possible to include Electric as an application dependency and configure it to expose a local HTTP API that's consumed by Phoenix.Sync running in `:http` mode:
 
 ```elixir
